@@ -1,0 +1,127 @@
+from osgeo import gdal
+import numpy as np
+
+def _get_arrays(ds, idx):
+
+    # get band
+    band = ds.GetRasterBand(idx)    
+    band_np = band.ReadAsArray()      
+    # get nan val and mask
+    nanval = band.GetNoDataValue()
+    nan_mask = band.GetMaskBand().ReadAsArray()
+
+    return band, band_np, nanval, nan_mask
+
+def resample_band_select(fin, fout, bandlist, res):
+    """
+    Resample the selected bands. 
+    
+    Args:
+        fin (path): path to the input raster to be processed.
+        fout (path): path to the resulting raster.
+        bandlist (list): list with bands to be kept.
+        res (float): x and y cell size in raster units.
+        percentile_min (float): lower bound percent value to clip (pixels with value smaller will be clipped).
+        percentile_max (float): upper bound percent value to clip (pixels with value larger will be clipped).
+        bands_trim (list of ints): bands that will be trimmed.
+    """
+    ds = gdal.Open(fin)
+    gdal.Translate(fout, ds, bandList=bandlist, xRes=res, yRes=res)
+
+    ds = None
+
+def clip_percentile(fin, percentile_min=1, percentile_max=99, bands_trim=[1,2]):
+    """
+    Clip values outside of boundaries
+    
+    Args:
+        fin (path): path to the input raster to be processed.
+        percentile_min (float): lower bound percent value to clip (pixels with value smaller will be clipped).
+        percentile_max (float): upper bound percent value to clip (pixels with value larger will be clipped).
+        bands_trim (list of ints): bands that will be trimmed.
+    """
+    if (percentile_min>0) or (percentile_max<100):
+        ds = gdal.Open(fin, 1)
+    
+        for idx in bands_trim:
+
+            band, band_np, nanval, nan_mask = _get_arrays(ds, idx)
+
+            # get percentile excluding no data points and replace in the band
+            min_val = np.percentile(band_np[nan_mask !=0], percentile_min)
+            max_val = np.percentile(band_np[nan_mask !=0], percentile_max)
+            band_np[band_np<min_val] = min_val
+            band_np[band_np>max_val] = max_val
+
+            # restore nan vals:
+            band_np[nan_mask == 0] = nanval
+            # write to band
+            band.WriteArray(band_np)
+
+        # close raster
+        ds = None
+
+def convert_to_db(fin, bands=[1,2], eps=1e-6):
+    """
+    Convert selected bands to dB using 
+    10*log10(x)
+    
+    Args:
+        fin (path): path to the input raster to be processed.
+        bands (list of ints): bands to be converted.
+        eps (float): small number to avoid log of zero
+    """
+
+
+    ds = gdal.Open(fin, 1)
+
+    for idx in bands:
+
+        band, band_np, nanval, nan_mask = _get_arrays(ds, idx)
+
+        minval = np.min(band_np>=0)
+
+        band_np[band_np <=0] = minval
+        band_np[nan_mask !=0] = 10*np.log10(band_np[nan_mask !=0])
+
+        # restore nan vals:
+        band_np[nan_mask == 0] = nanval
+        # write to band
+        band.WriteArray(band_np)
+
+    # close raster
+    ds = None
+
+
+
+if __name__ == '__main__':
+    import os
+    
+    fin_list =['20180116t075430.tif',
+               '20180213t175444.tif',
+               '20180313t181225.tif',
+               '20180417t074606.tif',
+               '20180515t174633.tif',
+               '20180612t180423.tif',
+               '20180717t073809.tif',
+               '20180814t075344.tif',
+               '20180911t175548.tif',
+               '20181016t072958.tif',
+               '20181113t074529.tif',
+               '20181218t075437.tif'
+               ]
+    
+    dir_in = 'E:/rafael/data/Extreme_Earth/noise_denoised_combined/'
+    dir_out = 'E:/rafael/data/Extreme_Earth/denoised_resampled/'
+        
+    bandlist = [1,3,4]
+    res = 80
+    
+    for f in fin_list:
+        fin = os.path.join(dir_in, f)
+        fout = os.path.join(dir_out, f)
+
+        print(f'Processing {fin}')
+    
+        resample_band_select(fin, fout, bandlist, res)
+        convert_to_db(fout)
