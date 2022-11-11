@@ -91,6 +91,10 @@ def evaluate(config):
     model = torch.jit.load(model_path)
     model.eval()
 
+    # save configuration file:
+    with open(os.path.join(dir_out, 'evaluate.cfg', 'w')) as out_file:
+        config.write(out_file)
+
     # run on test rasters:
     softmax = nn.Softmax(0)
     for idx, test_raster in enumerate(test_rasters):
@@ -126,7 +130,10 @@ def evaluate(config):
         xr_res.attrs=raster.attrs
         
         # write to file
-        xr_res.rio.to_raster(os.path.join(dir_out, f'pred-{Path(test_raster).stem}.tif'), dtype="float32")
+        out_fname = os.path.join(dir_out, f'pred-{Path(test_raster).stem}.tif')
+        if os.path.isfile(out_fname):
+            os.remove(out_fname)
+        xr_res.rio.to_raster(out_fname, dtype="float32")
         
         # write the class
         y_pred_class = res.argmax(0)
@@ -144,8 +151,11 @@ def evaluate(config):
         xr_res.attrs=raster.attrs
 
         xr_res.rio.write_nodata(nodata, inplace=True)
-        xr_res.rio.to_raster(os.path.join(dir_out, f'class-{Path(test_raster).stem}.tif'), dtype="uint8")
-
+        
+        out_fname = os.path.join(dir_out, f'class-{Path(test_raster).stem}.tif')
+        if os.path.isfile(out_fname):
+            os.remove(out_fname)
+        xr_res.rio.to_raster(out_fname, dtype="uint8")
 
         # compute metrics if the labels are available
         if 0 <= idx < len(test_label_rasters):
@@ -170,7 +180,11 @@ def evaluate(config):
             xr_res.attrs=raster.attrs
 
             xr_res.rio.write_nodata(nodata, inplace=True)
-            xr_res.rio.to_raster(os.path.join(dir_out, f'correct-prim-{Path(test_raster).stem}-vs-{Path(test_label_rasters[idx]).stem}.tif'), dtype="uint8")
+
+            out_fname = os.path.join(dir_out, f'correct-prim-{Path(test_raster).stem}-vs-{Path(test_label_rasters[idx]).stem}.tif')
+            if os.path.isfile(out_fname):
+                os.remove(out_fname)
+            xr_res.rio.to_raster(out_fname, dtype="uint8")
 
             if os.path.isfile(test_label_rasters_sec[idx]):
                 raster_y_sec = rioxarray.open_rasterio(test_label_rasters_sec[idx], masked=True)
@@ -191,7 +205,11 @@ def evaluate(config):
                 xr_res.attrs=raster.attrs
 
                 xr_res.rio.write_nodata(nodata, inplace=True)
-                xr_res.rio.to_raster(os.path.join(dir_out, f'correct-prim-or-sec-{Path(test_raster).stem}.tif'), dtype="uint8")
+
+                out_fname = os.path.join(dir_out, f'correct-prim-or-sec-{Path(test_raster).stem}.tif')
+                if os.path.isfile(out_fname):
+                    os.remove(out_fname)
+                xr_res.rio.to_raster(out_fname, dtype="uint8")
 
 
             with open(os.path.join(dir_out, f'metrics.txt'), 'a', encoding='utf-8') as outfile:
