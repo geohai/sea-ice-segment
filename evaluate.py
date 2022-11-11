@@ -92,7 +92,7 @@ def evaluate(config):
     model.eval()
 
     # save configuration file:
-    with open(os.path.join(dir_out, 'evaluate.cfg', 'w')) as out_file:
+    with open(os.path.join(dir_out, 'evaluate.cfg'), 'w') as out_file:
         config.write(out_file)
 
     # run on test rasters:
