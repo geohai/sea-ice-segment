@@ -1,6 +1,7 @@
 import argparse
 import configparser
 import os
+import sys
 
 import numpy as np
 import pandas as pd
@@ -61,10 +62,6 @@ def main(config):
     norms['input'] = Normalize(mean, std)
 
     pl.seed_everything(seed, workers=True)
-
-    # save configuration file:
-    with open(os.path.join(dir_out, 'train.cfg'), 'w') as out_file:
-        config.write(out_file)
 
     #########################################################
     df = pd.read_csv(fname_csv)
@@ -142,7 +139,7 @@ def main(config):
     if os.path.isfile(os.path.join(dir_out, 'best_weights.ckpt')):
         os.remove(os.path.join(dir_out, 'best_weights.ckpt'))
 
-    trainer = pl.Trainer(gpus=-1,
+    trainer = pl.Trainer(gpus=1,
                         default_root_dir=dir_out,
                         gradient_clip_val=1.0,   # clip large gradients
                         log_every_n_steps=1,
@@ -156,6 +153,13 @@ def main(config):
                         )
     
     trainer.fit(model, dm)
+
+    # TODO: maybe remove the quick check
+    # pytorch lightning "does not consider" script continues after .fit, 
+    # the following code will likely be ran once for each gpu available
+    # https://stackoverflow.com/questions/66261729/pytorch-lightning-duplicates-main-script-in-ddp-mode
+    if model.global_rank != 0:
+        sys.exit(0)
 
     # make sure model has the best weights and not the ones for the last epoch
     if os.path.isfile(os.path.join(dir_out, 'best_weights.ckpt')):
@@ -200,12 +204,18 @@ def main(config):
                     break
             if fig_counter >= 32:
                 break
+    
+    # save configuration file:
+    with open(os.path.join(dir_out, 'train.cfg'), 'w') as out_file:
+        config.write(out_file)
+    
+    return model
 
 if __name__ == '__main__':
     
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('-c', '--config_file', default='main_config.ini')
+    parser.add_argument('-c', '--config_file', default='config_main.ini')
 
     args = parser.parse_args()
 
@@ -218,7 +228,3 @@ if __name__ == '__main__':
     else:
         print('Please provide a valid configuration file.')
 
-
-
-
-#python main.py -c configs/SA-all.ini & python evaluate.py -c configs/eval_SA-all.ini & python main.py -c configs/SA-freeze.ini & python evaluate.py -c configs/eval_SA-freeze.ini & python main.py -c configs/SA-melt.ini & python evaluate.py -c configs/eval_SA-melt.ini & python main.py -c configs/poly_type-all.ini & python evaluate.py -c configs/eval_poly_type-all.ini & python main.py -c configs/poly_type-freeze.ini & python evaluate.py -c configs/eval_poly_type-freeze.ini & python main.py -c configs/poly_type-melt.ini & python evaluate.py -c configs/eval_poly_type-melt.ini 
