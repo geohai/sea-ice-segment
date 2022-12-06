@@ -1,6 +1,7 @@
 import argparse
 import configparser
 import os
+import time
 from pathlib import Path
 
 import numpy as np
@@ -10,62 +11,10 @@ import seaborn as sns
 import torch
 import xarray as xr
 from matplotlib import pyplot as plt
-from sklearn.metrics import classification_report, jaccard_score, confusion_matrix, ConfusionMatrixDisplay
+from sklearn.metrics import (ConfusionMatrixDisplay, classification_report,
+                             confusion_matrix, jaccard_score)
 from torch import nn
 from torchvision.transforms import Normalize
-
-
-def loss_decay_plots():
-    fnames_metrics = ['E:/rafael/data/Extreme_Earth/results/SA/freeze/experiments1/lightning_logs/version_1/metrics.csv', 
-                      'E:/rafael/data/Extreme_Earth/results/SA/freeze/experiments2/lightning_logs/version_1/metrics.csv',
-                      'E:/rafael/data/Extreme_Earth/results/SA/freeze/experiments3/lightning_logs/version_1/metrics.csv',
-                      'E:/rafael/data/Extreme_Earth/results/SA/freeze/experiments4/lightning_logs/version_1/metrics.csv',
-                      'E:/rafael/data/Extreme_Earth/results/SA/freeze/experiments5/lightning_logs/version_1/metrics.csv'
-                    ]
-    dir_out = 'E:/rafael/data/Extreme_Earth/results/SA/freeze/'
-
-    df_list = []                    
-    for fname_in in fnames_metrics:
-        df_list.append(pd.read_csv(fname_in))
-        df_list[-1]['experiment'] = fname_in
-
-    df = pd.concat(df_list).reset_index(drop=True)
-    
-    # create dset split column and remove nan vals
-    df['Set'] = np.nan
-    for dset in ['val_loss', 'train_loss_epoch']:
-        df.loc[~df[dset].isnull(), 'Set'] = dset.split('_')[0]
-    
-    df = df[~df['Set'].isnull()].dropna(axis=1, how='all').drop('step', axis=1)
-
-    cols = [i for i in df.columns if i not in ['Set', 'experiment', 'epoch']]
-
-    df_long = df.melt(id_vars=['epoch', 'Set'], value_vars=cols).dropna(axis=0, how='any')
-
-    # generate plots for each metric
-    for metric in ['Loss', 'IoU', 'F1']:
-        
-        df_long_select = df_long[df_long['variable'].str.lower().str.contains(metric.lower())].copy()
-        df_long_select['variable'] = df_long_select['variable'].str.split('_', expand=True)[0]
-
-        with sns.axes_style("whitegrid"):
-            fig, ax = plt.subplots()
-            sns.lineplot(x="epoch", y="value",
-                        hue="Set",
-                        ax = ax,
-                        estimator=np.median,
-                        data=df_long_select)
-            
-            if metric == 'Loss':
-                ax.set(yscale="log")                        
-
-            if metric == 'F1':
-                ax.set_ylim(bottom=0.85)                        
-
-            ax.set_xlabel('Epoch')
-            ax.set_ylabel(metric)
-
-            fig.savefig(os.path.join(dir_out, f'{metric}.pdf'))
 
 
 def evaluate(config):
@@ -99,7 +48,8 @@ def evaluate(config):
     softmax = nn.Softmax(0)
     for idx, test_raster in enumerate(test_rasters):
 
-        print(f'Using raster {test_raster}')
+        print(f'Using raster {test_raster}...', end=' ')
+        start_time = time.perf_counter()
         raster = rioxarray.open_rasterio(test_raster, masked=True)
         x = torch.from_numpy(raster.values).unsqueeze(dim=0)
 
@@ -112,6 +62,10 @@ def evaluate(config):
             res = model(x)
             # compute probabilities (instead of scores):
             res = softmax(torch.squeeze(res,0))
+        
+        end_time = time.perf_counter()
+        print(f'{(end_time-start_time)/60:.2f} minutes for model prediction...', end=' ')
+        start_time = time.perf_counter()
 
         # cast results to numpy
         res = res.detach().numpy()
@@ -260,10 +214,11 @@ def evaluate(config):
         res = None
         mask = None
 
+        end_time = time.perf_counter()
+        print(f'{(end_time-start_time)/60:.2f} minutes for writing files and metrics')
+
 if __name__ == '__main__':
     
-    #loss_decay_plots()
-
     parser = argparse.ArgumentParser()
 
     parser.add_argument('-c', '--config_file', default='eval_config.ini')
